@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ギター弦判定メトロノーム</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: #121212;
+      color: #ffffff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background-color: #1e1e1e;
+      border-radius: 16px;
+      padding: 28px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      margin-bottom: 20px;
+      color: #aaaaaa;
+      font-weight: 500;
+    }
+
+    /* メイン表示枠 */
+    .display-area {
+      background-color: #2a2a2a;
+      border-radius: 16px;
+      height: 180px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      border: 4px solid #333333;
+      position: relative;
+      transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+    }
+
+    /* 判定結果による表示アニメーション */
+    .display-area.correct {
+      border-color: #00e676 !important;
+      background-color: rgba(0, 230, 118, 0.1);
+      box-shadow: 0 0 30px rgba(0, 230, 118, 0.5);
+    }
+
+    .display-area.wrong {
+      border-color: #ff5252 !important;
+      background-color: rgba(255, 82, 82, 0.1);
+    }
+
+    .target-label {
+      font-size: 0.85rem;
+      color: #888888;
+      position: absolute;
+      top: 12px;
+    }
+
+    .number-display {
+      font-size: 5.5rem;
+      font-weight: bold;
+      color: #ffffff;
+      line-height: 1;
+      user-select: none;
+    }
+
+    /* 検出状態フィードバック */
+    .detected-info {
+      font-size: 1.1rem;
+      font-weight: bold;
+      height: 24px;
+      margin-bottom: 16px;
+      color: #aaaaaa;
+    }
+
+    .detected-info.ok { color: #00e676; }
+    .detected-info.ng { color: #ff5252; }
+
+    /* コントロール */
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .bpm-display {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #ffffff;
+      line-height: 1;
+    }
+
+    .bpm-label {
+      font-size: 0.8rem;
+      color: #888888;
+      margin-top: 2px;
+    }
+
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-step {
+      background-color: #333333;
+      color: #ffffff;
+      border: none;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-step:hover { background-color: #444444; }
+
+    input[type="range"] {
+      flex: 1;
+      height: 8px;
+      border-radius: 4px;
+      background: #444444;
+      outline: none;
+      accent-color: #00e676;
+      cursor: pointer;
+    }
+
+    .btn-toggle {
+      background-color: #00e676;
+      color: #000000;
+      border: none;
+      padding: 14px;
+      border-radius: 30px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-toggle:hover { background-color: #00c853; }
+    .btn-toggle.playing { background-color: #ff5252; color: #ffffff; }
+
+    .toggles {
+      display: flex;
+      justify-content: space-around;
+      font-size: 0.85rem;
+      color: #aaa;
+    }
+
+    .toggles label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .toggles input { accent-color: #00e676; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>ギター弦判定メトロノーム</h1>
+
+    <div class="display-area" id="displayArea">
+      <span class="target-label" id="targetLabel">指定弦 (1〜6)</span>
+      <div class="number-display" id="numDisplay">-</div>
+    </div>
+
+    <div class="detected-info" id="detectedInfo">マイク待機中</div>
+
+    <div class="controls">
+      <div>
+        <div class="bpm-display" id="bpmValue">120</div>
+        <div class="bpm-label">BPM</div>
+      </div>
+
+      <div class="slider-container">
+        <button class="btn-step" id="btnMinus">-</button>
+        <input type="range" id="bpmSlider" min="30" max="250" value="120">
+        <button class="btn-step" id="btnPlus">+</button>
+      </div>
+
+      <div class="toggles">
+        <label>
+          <input type="checkbox" id="soundToggle" checked>
+          クリック音
+        </label>
+        <label>
+          <input type="checkbox" id="micToggle" checked>
+          マイク判定
+        </label>
+      </div>
+
+      <button class="btn-toggle" id="btnStart">スタート</button>
+    </div>
+  </div>
+
+  <script>
+    // 各弦の解放弦ノート名とターゲット周波数(Hz)
+    // 1弦: E4 (329.63Hz), 2弦: B3 (246.94Hz), 3弦: G3 (196.00Hz),
+    // 4弦: D3 (146.83Hz), 5弦: A2 (110.00Hz), 6弦: E2 (82.41Hz)
+    const STRING_NOTES = {
+      1: { name: 'E4', pitch: 329.63 },
+      2: { name: 'B3', pitch: 246.94 },
+      3: { name: 'G3', pitch: 196.00 },
+      4: { name: 'D3', pitch: 146.83 },
+      5: { name: 'A2', pitch: 110.00 },
+      6: { name: 'E2', pitch: 82.41 }
+    };
+
+    let isPlaying = false;
+    let bpm = 120;
+    let timerId = null;
+    let currentTargetString = null;
+    let lastNumber = null;
+    let isCurrentHit = false;
+
+    // Audio & Mic Vars
+    let audioCtx = null;
+    let analyser = null;
+    let micStream = null;
+    let isMicListening = false;
+
+    const bpmSlider = document.getElementById('bpmSlider');
+    const bpmValue = document.getElementById('bpmValue');
+    const btnStart = document.getElementById('btnStart');
+    const btnMinus = document.getElementById('btnMinus');
+    const btnPlus = document.getElementById('btnPlus');
+    const soundToggle = document.getElementById('soundToggle');
+    const micToggle = document.getElementById('micToggle');
+    const numDisplay = document.getElementById('numDisplay');
+    const displayArea = document.getElementById('displayArea');
+    const targetLabel = document.getElementById('targetLabel');
+    const detectedInfo = document.getElementById('detectedInfo');
+
+    function updateBpm(newBpm) {
+      bpm = Math.min(Math.max(newBpm, 30), 250);
+      bpmSlider.value = bpm;
+      bpmValue.textContent = bpm;
+
+      if (isPlaying) {
+        stopTimer();
+        startTimer();
+      }
+    }
+
+    bpmSlider.addEventListener('input', (e) => updateBpm(parseInt(e.target.value)));
+    btnMinus.addEventListener('click', () => updateBpm(bpm - 1));
+    btnPlus.addEventListener('click', () => updateBpm(bpm + 1));
+
+    // メトロノーム音
+    function playClick() {
+      if (!soundToggle.checked || !audioCtx) return;
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.frequency.value = 1000;
+      gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.04);
+    }
+
+    // テンポ処理
+    function tick() {
+      // 直前の判定リセット
+      isCurrentHit = false;
+      displayArea.classList.remove('correct', 'wrong');
+
+      // 1〜6のランダム生成（連続回避）
+      let randomNumber;
+      do {
+        randomNumber = Math.floor(Math.random() * 6) + 1;
+      } while (randomNumber === lastNumber);
+
+      lastNumber = randomNumber;
+      currentTargetString = randomNumber;
+
+      const targetNote = STRING_NOTES[currentTargetString];
+      numDisplay.textContent = currentTargetString;
+      targetLabel.textContent = `${currentTargetString}弦 (${targetNote.name})`;
+      
+      detectedInfo.textContent = "演奏を検出中...";
+      detectedInfo.className = "detected-info";
+
+      playClick();
+    }
+
+    function startTimer() {
+      const intervalMs = (60 / bpm) * 1000;
+      tick();
+      timerId = setInterval(tick, intervalMs);
+    }
+
+    function stopTimer() {
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+    }
+
+    // マイクの初期化とピッチ検出Loop
+    async function initMicrophone() {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+
+        if (!micStream) {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          const source = audioCtx.createMediaStreamSource(micStream);
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 2048;
+          source.connect(analyser);
+        }
+
+        isMicListening = true;
+        detectPitch();
+      } catch (err) {
+        alert("マイクの使用許可が必要です。ブラウザの設定でマイクを許可してください。");
+        micToggle.checked = false;
+      }
+    }
+
+    // 自己相関法 (Autocorrelation) によるリアルタイムピッチ（周波数）検出
+    function detectPitch() {
+      if (!isMicListening) return;
+
+      const buffer = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(buffer);
+
+      // 音量（RMS）計算
+      let sum = 0;
+      for (let i = 0; i < buffer.length; i++) {
+        sum += buffer[i] * buffer[i];
+      }
+      const rms = Math.sqrt(sum / buffer.length);
+
+      // 一定以上の音量がある場合のみピッチ解析
+      if (rms > 0.02 && isPlaying && currentTargetString) {
+        const pitch = autoCorrelate(buffer, audioCtx.sampleRate);
+
+        if (pitch !== -1) {
+          const detectedString = getClosestGuitarString(pitch);
+
+          if (detectedString) {
+            if (detectedString === currentTargetString && !isCurrentHit) {
+              // 正解判定！
+              isCurrentHit = true;
+              displayArea.classList.remove('wrong');
+              displayArea.classList.add('correct');
+              detectedInfo.textContent = `正解！ (${STRING_NOTES[detectedString].name})`;
+              detectedInfo.className = "detected-info ok";
+            } else if (detectedString !== currentTargetString && !isCurrentHit) {
+              // 不正解判定
+              displayArea.classList.add('wrong');
+              detectedInfo.textContent = `検出: ${detectedString}弦 (${STRING_NOTES[detectedString].name})`;
+              detectedInfo.className = "detected-info ng";
+            }
+          }
+        }
+      }
+
+      requestAnimationFrame(detectPitch);
+    }
+
+    // 自己相関アルゴリズム
+    function autoCorrelate(buffer, sampleRate) {
+      const SIZE = buffer.length;
+      let r1 = 0, r2 = SIZE - 1;
+      const thres = 0.2;
+
+      for (let i = 0; i < SIZE / 2; i++) {
+        if (Math.abs(buffer[i]) < thres) { r1 = i; break; }
+      }
+      for (let i = 1; i < SIZE / 2; i++) {
+        if (Math.abs(buffer[SIZE - i]) < thres) { r2 = SIZE - i; break; }
+      }
+
+      const buf = buffer.slice(r1, r2);
+      const c = new Array(buf.length).fill(0);
+
+      for (let i = 0; i < buf.length; i++) {
+        for (let j = 0; j < buf.length - i; j++) {
+          c[i] = c[i] + buf[j] * buf[j + i];
+        }
+      }
+
+      let d = 0;
+      while (c[d] > c[d + 1]) d++;
+
+      let maxval = -1, maxpos = -1;
+      for (let i = d; i < buf.length; i++) {
+        if (c[i] > maxval) {
+          maxval = c[i];
+          maxpos = i;
+        }
+      }
+
+      let T0 = maxpos;
+      if (T0 === -1 || c[0] === 0) return -1;
+
+      return sampleRate / T0;
+    }
+
+    // 検出周波数から最も近いギターの弦（1〜6）を割り出す
+    function getClosestGuitarString(pitch) {
+      let closestString = null;
+      let minDiff = Infinity;
+
+      for (const [strNum, info] of Object.entries(STRING_NOTES)) {
+        // 周波数の比率から半音差を計算（±1.2半音以内を許容）
+        const semitoneDiff = Math.abs(12 * Math.log2(pitch / info.pitch));
+        if (semitoneDiff < 1.2 && semitoneDiff < minDiff) {
+          minDiff = semitoneDiff;
+          closestString = parseInt(strNum);
+        }
+      }
+
+      return closestString;
+    }
+
+    // スタート/ストップ
+    btnStart.addEventListener('click', async () => {
+      if (micToggle.checked && !isMicListening) {
+        await initMicrophone();
+      } else if (audioCtx && audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+
+      isPlaying = !isPlaying;
+
+      if (isPlaying) {
+        lastNumber = null;
+        btnStart.textContent = 'ストップ';
+        btnStart.classList.add('playing');
+        startTimer();
+      } else {
+        stopTimer();
+        btnStart.textContent = 'スタート';
+        btnStart.classList.remove('playing');
+        numDisplay.textContent = '-';
+        targetLabel.textContent = '指定弦 (1〜6)';
+        detectedInfo.textContent = 'マイク待機中';
+        detectedInfo.className = 'detected-info';
+        displayArea.classList.remove('correct', 'wrong');
+      }
+    });
+
+    micToggle.addEventListener('change', (e) => {
+      if (e.target.checked && isPlaying) {
+        initMicrophone();
+      }
+    });
+  </script>
+</body>
+</html>
